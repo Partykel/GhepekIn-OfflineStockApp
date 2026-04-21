@@ -1,0 +1,42 @@
+name: ghepek_in
+description: "Aplikasi kasir digital untuk UMKM kuliner — Ghepek.in"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Database
+  sqflite: ^2.4.2
+  path: ^1.9.0
+
+  # State Management
+  flutter_riverpod: ^3.3.1
+  riverpod_annotation: ^4.0.2
+
+  # Navigasi
+  go_router: ^17.2.0
+
+  # Grafik
+  fl_chart: ^0.71.0
+
+  # Notifikasi Lokal
+  flutter_local_notifications: ^18.0.0
+
+  # Format Angka & Tanggal
+  intl: ^0.20.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  riverpod_generator: ^4.0.3
+
+flutter:
+  uses-material-design: true
