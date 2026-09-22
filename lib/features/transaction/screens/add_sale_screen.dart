@@ -1,5 +1,3 @@
-// ignore_for_file: unnecessary_underscores
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -35,6 +33,14 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
   Widget build(BuildContext context) {
     final productsAsync = ref.watch(allProductsProvider);
 
+    final total = _calculateTotal(
+      productsAsync.when(
+        data: (products) => products,
+        loading: () => const <Product>[],
+        error: (error, stackTrace) => const <Product>[],
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tambah Penjualan'),
@@ -56,7 +62,7 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: availableProducts.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final product = availableProducts[index];
                     return _buildProductTile(product);
@@ -71,64 +77,67 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AppTextField(
-                  label: 'Catatan (Opsional)',
-                  controller: _noteController,
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Total',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          Text(
-                            CurrencyFormatter.format(_calculateTotal()),
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(
-                      width: 120,
-                      child: AppButton(
-                        text: 'Simpan',
-                        onPressed: _selectedItems.isEmpty ? null : _saveSale,
-                        isLoading: _isLoading,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppTextField(
+                label: 'Catatan (Opsional)',
+                controller: _noteController,
+                maxLines: 2,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Total',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          CurrencyFormatter.format(total),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: AppButton(
+                      text: 'Simpan',
+                      onPressed: _selectedItems.isEmpty || _isLoading ? null : _saveSale,
+                      isLoading: _isLoading,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -221,38 +230,52 @@ class _AddSaleScreenState extends ConsumerState<AddSaleScreen> {
     });
   }
 
-  double _calculateTotal() {
-    double total = 0;
-    for (final entry in _selectedItems.entries) {
-      final product = ref.read(allProductsProvider).value?.firstWhere(
-            (p) => p.id == entry.key,
-            orElse: () => Product(
-              name: '',
-              sellPrice: 0,
-              costPrice: 0,
-            ),
-          );
-      if (product != null) {
-        total += product.sellPrice * entry.value;
-      }
-    }
-    return total;
+  double _calculateTotal(List<Product> products) {
+    final productMap = {for (final product in products) product.id: product};
+    return _selectedItems.entries.fold<double>(0, (sum, entry) {
+      final product = productMap[entry.key];
+      if (product == null) return sum;
+      return sum + (product.sellPrice * entry.value);
+    });
   }
 
   Future<void> _saveSale() async {
+    final products = ref.read(allProductsProvider).when(
+      data: (products) => products,
+      loading: () => const <Product>[],
+      error: (error, stackTrace) => const <Product>[],
+    );
+
+    if (_selectedItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pilih minimal satu produk.')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      final items = _selectedItems.entries.map((entry) {
-        final product = ref.read(allProductsProvider).value!.firstWhere(
-              (p) => p.id == entry.key,
-            );
-        return {
+      final productMap = {for (final product in products) product.id: product};
+
+      final items = <Map<String, dynamic>>[];
+      for (final entry in _selectedItems.entries) {
+        final product = productMap[entry.key];
+        if (product == null) {
+          throw StateError('Produk dengan ID ${entry.key} tidak ditemukan.');
+        }
+        if (entry.value <= 0) {
+          throw ArgumentError('Jumlah penjualan harus lebih dari 0.');
+        }
+        if (entry.value > product.stock) {
+          throw StateError('Stok ${product.name} tidak mencukupi.');
+        }
+        items.add({
           'product_id': entry.key,
           'quantity': entry.value,
           'price_at_sale': product.sellPrice,
-        };
-      }).toList();
+        });
+      }
 
       await ref.read(addSaleProvider.notifier).call(
         items: items,

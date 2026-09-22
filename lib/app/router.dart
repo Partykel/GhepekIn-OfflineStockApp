@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/product/screens/product_list_screen.dart';
 import '../features/product/screens/add_edit_product_screen.dart';
+import '../features/product/screens/low_stock_screen.dart';
 import '../features/transaction/screens/add_sale_screen.dart';
 import '../features/transaction/screens/add_expense_screen.dart';
 import '../features/transaction/screens/transaction_history_screen.dart';
@@ -35,6 +36,11 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/low-stock',
+      name: 'low-stock',
+      builder: (context, state) => const LowStockScreen(),
+    ),
+    GoRoute(
       path: '/sale/new',
       name: 'sale-new',
       builder: (context, state) => const AddSaleScreen(),
@@ -62,6 +68,7 @@ final GoRouter router = GoRouter(
         return ReportDetailScreen(
           period: extra['period'] as String? ?? 'harian',
           date: extra['date'] as String? ?? '',
+          label: extra['label'] as String?,
         );
       },
     ),

@@ -1,17 +1,65 @@
-# ghepek_in
+# Ghepek.in
 
-Maharani Flutter project
+Aplikasi kasir digital offline untuk UMKM kuliner berbasis Flutter.
 
-## Getting Started
+## Ringkasan fitur
 
-This project is a starting point for a Flutter application.
+- CRUD produk
+- Penjualan multi-produk
+- Pengeluaran operasional dan restock
+- Stok otomatis berkurang/bertambah
+- Dashboard pemasukan, pengeluaran, laba bersih
+- Grafik tren 7 hari
+- Laporan harian, mingguan, bulanan
+- Notifikasi stok menipis dan defisit
+- Riwayat transaksi dengan hapus dan restore stok
+- Pencarian dan sorting produk, termasuk terlaris hari ini
 
-A few resources to get you started if this is your first Flutter project:
+## Teknologi
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Flutter
+- Riverpod
+- go_router
+- SQLite via sqflite
+- fl_chart
+- flutter_local_notifications
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Struktur singkat
+
+- `lib/core` — database, service notifikasi, utilitas
+- `lib/features/product` — manajemen produk
+- `lib/features/transaction` — penjualan, pengeluaran, riwayat
+- `lib/features/dashboard` — ringkasan utama
+- `lib/features/report` — laporan periode
+
+## Cara menjalankan
+
+```bash
+git clone https://github.com/Partykel/GhepekIn-OfflineStockApp.git
+cd GhepekIn-OfflineStockApp
+flutter pub get
+flutter run
+```
+
+## Build APK
+
+```bash
+flutter build apk
+```
+
+## Catatan implementasi
+
+- Data disimpan lokal di SQLite.
+- Stok dan histori transaksi dihitung dari data transaksi, bukan field total yang diredundansi.
+- Penghapusan transaksi penjualan akan mengembalikan stok.
+- Penghapusan pengeluaran kategori `Beli Stok` juga mengembalikan stok.
+
+## Pengembangan lanjutan
+
+Jika ingin melanjutkan ke versi berikutnya, kandidat yang paling masuk akal adalah:
+
+- export backup
+- pencarian laporan lebih detail
+- filter riwayat berdasarkan tanggal
+- printer struk
+- sinkronisasi cloud

@@ -1,4 +1,5 @@
-// ignore_for_file: unnecessary_underscores
+
+import 'dart:collection';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import '../../../shared/constants/app_strings.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../product/providers/product_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../models/transaction.dart';
 
@@ -19,6 +21,7 @@ class TransactionHistoryScreen extends ConsumerStatefulWidget {
 
 class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScreen> {
   String _filterType = 'all';
+  DateTime? _selectedDate;
 
   @override
   Widget build(BuildContext context) {
@@ -27,16 +30,34 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
     return Scaffold(
       appBar: AppBar(
         title: const Text('Riwayat Transaksi'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            tooltip: 'Pilih tanggal',
+            onPressed: _pickDate,
+          ),
+          if (_selectedDate != null)
+            IconButton(
+              icon: const Icon(Icons.clear),
+              tooltip: 'Hapus filter tanggal',
+              onPressed: () => setState(() => _selectedDate = null),
+            ),
+        ],
       ),
       body: Column(
         children: [
+          _buildDateBanner(),
           _buildFilterChips(),
           Expanded(
             child: transactionsAsync.when(
               data: (transactions) {
-                final filtered = _filterType == 'all'
-                    ? transactions
-                    : transactions.where((t) => t.type == _filterType).toList();
+                final filtered = transactions.where((t) {
+                  final matchesType = _filterType == 'all' || t.type == _filterType;
+                  final matchesDate = _selectedDate == null
+                      ? true
+                      : _isSameDate(t.createdAt, _selectedDate!);
+                  return matchesType && matchesDate;
+                }).toList();
 
                 if (filtered.isEmpty) {
                   return const EmptyState(
@@ -48,7 +69,7 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     return _buildTransactionCard(filtered[index]);
                   },
@@ -62,6 +83,36 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateBanner() {
+    final label = _selectedDate == null
+        ? 'Semua tanggal'
+        : DateFormatter.formatFull(_selectedDate!);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          const Icon(Icons.event_outlined, size: 18, color: AppColors.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          if (_selectedDate != null)
+            TextButton(
+              onPressed: () => setState(() => _selectedDate = null),
+              child: const Text('Tampilkan semua'),
+            ),
         ],
       ),
     );
@@ -82,6 +133,27 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
     );
   }
 
+  Future<void> _pickDate() async {
+    final initial = _selectedDate ?? DateTime.now();
+    final firstDate = DateTime(2020);
+    final lastDate = DateTime.now().add(const Duration(days: 365));
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial.isBefore(firstDate) ? firstDate : initial,
+      firstDate: firstDate,
+      lastDate: lastDate,
+    );
+
+    if (picked != null && mounted) {
+      setState(() => _selectedDate = DateTime(picked.year, picked.month, picked.day));
+    }
+  }
+
+  bool _isSameDate(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   Widget _buildFilterChip(String value, String label) {
     final isSelected = _filterType == value;
     return FilterChip(
@@ -98,10 +170,15 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
   Widget _buildTransactionCard(Transaction transaction) {
     final isIncome = transaction.isIncome;
 
-    return FutureBuilder<double>(
-      future: _getTransactionAmount(transaction.id!),
+    return FutureBuilder<_TransactionCardData>(
+      future: _getTransactionCardData(transaction),
       builder: (context, snapshot) {
-        final amount = snapshot.data ?? 0.0;
+        final cardData = snapshot.data ??
+            _TransactionCardData(
+              amount: 0,
+              title: _getTransactionTypeLabel(transaction),
+              subtitle: _getTransactionTypeLabel(transaction),
+            );
 
         return Dismissible(
           key: ValueKey(transaction.id),
@@ -143,6 +220,12 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
             await ref.read(transactionRepositoryProvider).deleteTransaction(transaction.id!);
             ref.invalidate(transactionHistoryProvider);
             ref.invalidate(todayStatsProvider);
+            ref.invalidate(sevenDayTrendProvider);
+            if (transaction.isIncome ||
+                (transaction.isExpense && transaction.category == 'stok')) {
+              ref.invalidate(allProductsProvider);
+              ref.invalidate(lowStockProductsProvider);
+            }
             if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text(AppStrings.deleteSuccess)),
@@ -161,16 +244,16 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
                 ),
               ),
               title: Text(
-                _getTransactionTitle(transaction),
+                cardData.title,
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 4),
-                  if (transaction.category != null)
+                  if (cardData.subtitle.isNotEmpty)
                     Text(
-                      transaction.category!,
+                      cardData.subtitle,
                       style: const TextStyle(color: AppColors.textSecondary),
                     ),
                   const SizedBox(height: 2),
@@ -181,7 +264,7 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
                 ],
               ),
               trailing: Text(
-                CurrencyFormatter.format(amount),
+                CurrencyFormatter.format(cardData.amount),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -195,30 +278,94 @@ class _TransactionHistoryScreenState extends ConsumerState<TransactionHistoryScr
     );
   }
 
-  Future<double> _getTransactionAmount(int transactionId) async {
+  Future<_TransactionCardData> _getTransactionCardData(
+    Transaction transaction,
+  ) async {
     final details = await ref
         .read(transactionRepositoryProvider)
-        .getTransactionDetails(transactionId);
-    if (details.isEmpty) return 0.0;
-    // FIX BUG #3: Harus quantity × price_at_sale, bukan hanya price_at_sale
-    return details.fold<double>(
+        .getTransactionDetails(transaction.id!);
+
+    final amount = details.fold<double>(
       0.0,
       (sum, item) =>
           sum +
           ((item['quantity'] as num).toDouble() *
               (item['price_at_sale'] as num).toDouble()),
     );
+
+    final title = _buildTransactionItemTitle(transaction, details);
+
+    return _TransactionCardData(
+      amount: amount,
+      title: title,
+      subtitle: _buildTransactionSubtitle(transaction, title),
+    );
   }
 
-  String _getTransactionTitle(Transaction transaction) {
+  String _buildTransactionItemTitle(
+    Transaction transaction,
+    List<Map<String, dynamic>> details,
+  ) {
+    final itemSummary = _summarizeProductNames(details);
+
     if (transaction.isIncome) {
-      return 'Penjualan';
+      return itemSummary ?? 'Penjualan';
     }
-    final categoryMap = {
+
+    if (transaction.category == 'stok') {
+      return itemSummary ?? 'Beli Stok';
+    }
+
+    final note = transaction.note?.trim();
+    if (note != null && note.isNotEmpty) {
+      return note;
+    }
+
+    return _getTransactionTypeLabel(transaction);
+  }
+
+  String _buildTransactionSubtitle(Transaction transaction, String title) {
+    final typeLabel = _getTransactionTypeLabel(transaction);
+    return title == typeLabel ? '' : typeLabel;
+  }
+
+  String _getTransactionTypeLabel(Transaction transaction) {
+    const categoryMap = {
       'stok': 'Beli Stok',
       'operasional': 'Operasional',
       'lainnya': 'Lainnya',
     };
+
+    if (transaction.isIncome) {
+      return 'Penjualan';
+    }
+
     return categoryMap[transaction.category] ?? 'Pengeluaran';
   }
+
+  String? _summarizeProductNames(List<Map<String, dynamic>> details) {
+    final uniqueNames = LinkedHashSet<String>.from(
+      details
+          .map((item) => (item['product_name'] as String?)?.trim())
+          .whereType<String>()
+          .where((name) => name.isNotEmpty),
+    ).toList();
+
+    if (uniqueNames.isEmpty) return null;
+    if (uniqueNames.length == 1) return uniqueNames.first;
+
+    return '${uniqueNames.first} +${uniqueNames.length - 1} lainnya';
+  }
+}
+
+class _TransactionCardData {
+  final double amount;
+  final String title;
+  final String subtitle;
+
+  const _TransactionCardData({
+    required this.amount,
+    required this.title,
+    required this.subtitle,
+  });
 }

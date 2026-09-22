@@ -46,9 +46,11 @@ class AppButton extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: _getBackgroundColor(),
         foregroundColor: _getForegroundColor(),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        elevation: 0,
+        minimumSize: const Size.fromHeight(54),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(18),
         ),
       ),
       child: _buildChild(),
@@ -75,12 +77,20 @@ class AppButton extends StatelessWidget {
         children: [
           Icon(icon, size: 18),
           const SizedBox(width: 8),
-          Text(text),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       );
     }
 
-    return Text(text);
+    return Text(
+      text,
+      overflow: TextOverflow.ellipsis,
+    );
   }
 
   Color _getBackgroundColor() {

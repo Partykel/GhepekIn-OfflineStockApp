@@ -245,4 +245,3 @@ Kalau semua langkah di atas berhasil, artinya project sudah:
 - APK bisa di-build
 
 Kalau mau, langkah berikutnya adalah menambahkan screenshot, deskripsi fitur, dan struktur folder ke README supaya repo terlihat lebih rapi dan mudah dinilai.
-

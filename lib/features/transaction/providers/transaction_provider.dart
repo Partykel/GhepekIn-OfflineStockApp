@@ -9,7 +9,7 @@ final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   return TransactionRepository();
 });
 
-final todayStatsProvider = FutureProvider<Map<String, double>>((ref) async {
+final todayStatsProvider = FutureProvider.autoDispose<Map<String, double>>((ref) async {
   final repository = ref.read(transactionRepositoryProvider);
   final income = await repository.getTodayIncome();
   final expense = await repository.getTodayExpense();
@@ -20,21 +20,23 @@ final todayStatsProvider = FutureProvider<Map<String, double>>((ref) async {
   };
 });
 
-final topProductsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final topProductsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   return ref.read(transactionRepositoryProvider).getTopProductsToday(limit: 3);
 });
 
-final transactionHistoryProvider = FutureProvider<List<Transaction>>((ref) async {
+final todaySoldCountByProductProvider = FutureProvider.autoDispose<Map<int, int>>((ref) async {
+  return ref.read(transactionRepositoryProvider).getTodaySoldCountByProduct();
+});
+
+final transactionHistoryProvider = FutureProvider.autoDispose<List<Transaction>>((ref) async {
   final repository = ref.read(transactionRepositoryProvider);
   return repository.getHistory();
 });
 
-final sevenDayTrendProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final sevenDayTrendProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   return ref.read(transactionRepositoryProvider).getSevenDayTrend();
 });
 
-// FIX BUG #1: build() tidak boleh throw — kembalikan Transaction dummy sebagai placeholder.
-// State ini tidak dikonsumsi di UI manapun; provider ini hanya dipakai via .notifier.call().
 class AddSaleNotifier extends Notifier<Transaction?> {
   @override
   Transaction? build() => null;
@@ -46,13 +48,14 @@ class AddSaleNotifier extends Notifier<Transaction?> {
     final repository = ref.read(transactionRepositoryProvider);
     final transaction = await repository.createSale(items: items, note: note);
 
-    // FIX BUG #4: Trigger notifikasi stok menipis setelah penjualan
     await _checkAndNotifyLowStock(items);
 
     ref.invalidate(todayStatsProvider);
     ref.invalidate(topProductsProvider);
+    ref.invalidate(todaySoldCountByProductProvider);
     ref.invalidate(sevenDayTrendProvider);
     ref.invalidate(allProductsProvider);
+    ref.invalidate(lowStockProductsProvider);
 
     state = transaction;
     return transaction;
@@ -76,7 +79,7 @@ class AddSaleNotifier extends Notifier<Transaction?> {
             lastNotified.day == today.day;
 
         if (!alreadyNotifiedToday) {
-          await notificationService.showStockAlert(product.name, product.stock);
+          await notificationService.showStockAlert(product.name, product.stock, productId: productId);
           await productRepo.updateLastNotifiedAt(productId);
         }
       }
@@ -88,7 +91,6 @@ final addSaleProvider = NotifierProvider<AddSaleNotifier, Transaction?>(() {
   return AddSaleNotifier();
 });
 
-// FIX BUG #1: sama seperti AddSaleNotifier
 class AddExpenseNotifier extends Notifier<Transaction?> {
   @override
   Transaction? build() => null;
@@ -107,13 +109,13 @@ class AddExpenseNotifier extends Notifier<Transaction?> {
       restockItems: restockItems,
     );
 
-    // FIX BUG #4: Trigger notifikasi defisit setelah pengeluaran
     await _checkAndNotifyDeficit();
 
     ref.invalidate(todayStatsProvider);
     ref.invalidate(sevenDayTrendProvider);
     if (restockItems != null && restockItems.isNotEmpty) {
       ref.invalidate(allProductsProvider);
+      ref.invalidate(lowStockProductsProvider);
     }
 
     state = transaction;

@@ -35,9 +35,10 @@ class NotificationService {
   void _onNotificationTapped(NotificationResponse response) {
   }
 
-  Future<void> showStockAlert(String productName, int stockLevel) async {
+  Future<void> showStockAlert(String productName, int stockLevel, {int productId = 0}) async {
+    final notifId = 100 + (productId % 900);
     await _notifications.show(
-      1,
+      notifId,
       'Stok Menipis: $productName',
       'Sisa stok: $stockLevel. Segera lakukan restok!',
       NotificationDetails(
@@ -82,7 +83,6 @@ class NotificationService {
   }
 
   String _formatCurrency(double amount) {
-    // FIX BUG #5: r'(\\d...)' artinya literal \\d, bukan digit class. Harus r'(\d...)'
     return 'Rp ${amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}';
   }
 }

@@ -1,5 +1,5 @@
 class DbMigrations {
-  static const int currentVersion = 1;
+  static const int currentVersion = 2;
 
   static List<String> get onCreateQueries => [
         _createProductsTable,
@@ -17,6 +17,8 @@ class DbMigrations {
       stock            INTEGER NOT NULL DEFAULT 0,
       min_stock        INTEGER NOT NULL DEFAULT 5,
       unit             TEXT    NOT NULL DEFAULT 'pcs',
+      is_deleted       INTEGER NOT NULL DEFAULT 0,
+      deleted_at       TEXT,
       last_notified_at TEXT,
       created_at       TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
       updated_at       TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -60,6 +62,21 @@ class DbMigrations {
   ''';
 
   static List<String> getUpgradeQueries(int oldVersion, int newVersion) {
-    return [];
+    final queries = <String>[];
+
+    if (oldVersion < 2 && newVersion >= 2) {
+      queries.addAll([
+        '''
+        ALTER TABLE products
+        ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0
+        ''',
+        '''
+        ALTER TABLE products
+        ADD COLUMN deleted_at TEXT
+        ''',
+      ]);
+    }
+
+    return queries;
   }
 }

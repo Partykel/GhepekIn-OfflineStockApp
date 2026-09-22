@@ -37,6 +37,6 @@ class AllProductsNotifier extends AsyncNotifier<List<Product>> {
   }
 }
 
-final lowStockProductsProvider = FutureProvider<List<Product>>((ref) async {
+final lowStockProductsProvider = FutureProvider.autoDispose<List<Product>>((ref) async {
   return ref.read(productRepositoryProvider).getLowStockProducts();
 });

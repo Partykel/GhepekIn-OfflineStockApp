@@ -21,17 +21,30 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 64,
-              color: AppColors.divider,
+            Container(
+              width: 86,
+              height: 86,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    AppColors.primarySoft,
+                    AppColors.accentSoft,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: Icon(
+                icon,
+                size: 42,
+                color: AppColors.primaryDark,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               title,
               style: const TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
               ),
               textAlign: TextAlign.center,
@@ -43,6 +56,7 @@ class EmptyState extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
+                  height: 1.4,
                 ),
                 textAlign: TextAlign.center,
               ),

@@ -8,6 +8,10 @@ class TransactionRepository {
     required List<Map<String, dynamic>> items,
     String? note,
   }) async {
+    if (items.isEmpty) {
+      throw ArgumentError('Minimal satu item diperlukan untuk transaksi penjualan.');
+    }
+
     final db = await _dbHelper.database;
     return await db.transaction((txn) async {
       final now = DateTime.now().toIso8601String();
@@ -20,21 +24,54 @@ class TransactionRepository {
       });
 
       for (final item in items) {
+        final productId = item['product_id'] as int?;
+        final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+        final priceAtSale = (item['price_at_sale'] as num?)?.toDouble() ?? 0;
+
+        if (productId == null) {
+          throw ArgumentError('product_id tidak boleh kosong.');
+        }
+        if (quantity <= 0) {
+          throw ArgumentError('Quantity harus lebih dari 0.');
+        }
+        if (priceAtSale <= 0) {
+          throw ArgumentError('price_at_sale harus lebih dari 0.');
+        }
+
+        final productRows = await txn.query(
+          'products',
+          columns: ['stock', 'is_deleted'],
+          where: 'id = ?',
+          whereArgs: [productId],
+          limit: 1,
+        );
+        if (productRows.isEmpty) {
+          throw StateError('Produk dengan ID $productId tidak ditemukan.');
+        }
+        if (((productRows.first['is_deleted'] as num?)?.toInt() ?? 0) == 1) {
+          throw StateError('Produk dengan ID $productId sudah dihapus.');
+        }
+
+        final currentStock = (productRows.first['stock'] as num).toInt();
+        if (currentStock < quantity) {
+          throw StateError('Stok produk ID $productId tidak mencukupi.');
+        }
+
         await txn.insert('transaction_items', {
           'transaction_id': transactionId,
-          'product_id': item['product_id'],
-          'quantity': item['quantity'],
-          'price_at_sale': item['price_at_sale'],
+          'product_id': productId,
+          'quantity': quantity,
+          'price_at_sale': priceAtSale,
         });
 
         await txn.rawUpdate(
           'UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ?',
-          [item['quantity'], now, item['product_id']],
+          [quantity, now, productId],
         );
 
         await txn.insert('stock_adjustments', {
-          'product_id': item['product_id'],
-          'quantity_change': -item['quantity'],
+          'product_id': productId,
+          'quantity_change': -quantity,
           'reason': 'sale',
           'transaction_id': transactionId,
           'created_at': now,
@@ -52,14 +89,58 @@ class TransactionRepository {
   }
 
   Future<Transaction> createExpense({
-    required double amount,
+    double? amount,
     required String category,
     String? note,
     List<Map<String, dynamic>>? restockItems,
   }) async {
+    if (category == 'stok' && (restockItems == null || restockItems.isEmpty)) {
+      throw ArgumentError('Minimal satu produk harus dipilih untuk kategori Beli Stok.');
+    }
+
     final db = await _dbHelper.database;
     return await db.transaction((txn) async {
       final now = DateTime.now().toIso8601String();
+      final normalizedRestockItems = <({int productId, int quantity})>[];
+      double finalAmount = amount ?? 0;
+
+      if (category == 'stok' && restockItems != null) {
+        finalAmount = 0;
+
+        for (final item in restockItems) {
+          final productId = item['product_id'] as int?;
+          final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+
+          if (productId == null) {
+            throw ArgumentError('product_id restock tidak boleh kosong.');
+          }
+          if (quantity <= 0) {
+            throw ArgumentError('Quantity restock harus lebih dari 0.');
+          }
+
+          final productRows = await txn.query(
+            'products',
+            columns: ['id', 'cost_price', 'is_deleted'],
+            where: 'id = ?',
+            whereArgs: [productId],
+            limit: 1,
+          );
+          if (productRows.isEmpty) {
+            throw StateError('Produk dengan ID $productId tidak ditemukan.');
+          }
+          if (((productRows.first['is_deleted'] as num?)?.toInt() ?? 0) == 1) {
+            throw StateError('Produk dengan ID $productId sudah dihapus.');
+          }
+
+          final costPrice = (productRows.first['cost_price'] as num).toDouble();
+          normalizedRestockItems.add((productId: productId, quantity: quantity));
+          finalAmount += costPrice * quantity;
+        }
+      }
+
+      if (finalAmount <= 0) {
+        throw ArgumentError('Nominal pengeluaran harus lebih dari 0.');
+      }
 
       final transactionId = await txn.insert('transactions', {
         'type': 'expense',
@@ -73,19 +154,19 @@ class TransactionRepository {
         'transaction_id': transactionId,
         'product_id': null,
         'quantity': 1,
-        'price_at_sale': amount,
+        'price_at_sale': finalAmount,
       });
 
-      if (category == 'stok' && restockItems != null) {
-        for (final item in restockItems) {
+      if (category == 'stok') {
+        for (final item in normalizedRestockItems) {
           await txn.rawUpdate(
             'UPDATE products SET stock = stock + ?, updated_at = ? WHERE id = ?',
-            [item['quantity'], now, item['product_id']],
+            [item.quantity, now, item.productId],
           );
 
           await txn.insert('stock_adjustments', {
-            'product_id': item['product_id'],
-            'quantity_change': item['quantity'],
+            'product_id': item.productId,
+            'quantity_change': item.quantity,
             'reason': 'restock',
             'transaction_id': transactionId,
             'created_at': now,
@@ -121,20 +202,39 @@ class TransactionRepository {
           where: 'transaction_id = ?',
           whereArgs: [id],
         );
-
         for (final item in items) {
           final productId = item['product_id'] as int?;
           if (productId != null) {
             final quantity = item['quantity'] as int;
             await txn.rawUpdate(
-              'UPDATE products SET stock = stock + ? WHERE id = ?',
+              'UPDATE products SET stock = stock + ?, updated_at = datetime(\'now\', \'localtime\') WHERE id = ?',
               [quantity, productId],
+            );
+          }
+        }
+      } else if (transaction.type == 'expense' &&
+          transaction.category == 'stok') {
+        final adjustments = await txn.query(
+          'stock_adjustments',
+          where: 'transaction_id = ? AND reason = ?',
+          whereArgs: [id, 'restock'],
+        );
+        for (final adj in adjustments) {
+          final productId = adj['product_id'] as int?;
+          if (productId != null) {
+            final qty = (adj['quantity_change'] as int).abs();
+            await txn.rawUpdate(
+              'UPDATE products SET stock = MAX(0, stock - ?), updated_at = datetime(\'now\', \'localtime\') WHERE id = ?',
+              [qty, productId],
             );
           }
         }
       }
 
-      await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [id]);
+      await txn.delete('stock_adjustments',
+          where: 'transaction_id = ?', whereArgs: [id]);
+      await txn.delete('transaction_items',
+          where: 'transaction_id = ?', whereArgs: [id]);
       await txn.delete('transactions', where: 'id = ?', whereArgs: [id]);
     });
   }
@@ -178,6 +278,23 @@ class TransactionRepository {
     ''', [limit]);
   }
 
+  Future<Map<int, int>> getTodaySoldCountByProduct() async {
+    final db = await _dbHelper.database;
+    final rows = await db.rawQuery('''
+      SELECT ti.product_id, SUM(ti.quantity) AS total_sold
+      FROM transaction_items ti
+      JOIN transactions t ON t.id = ti.transaction_id
+      WHERE t.type = 'income'
+        AND DATE(t.created_at) = DATE('now', 'localtime')
+      GROUP BY ti.product_id
+    ''');
+
+    return {
+      for (final row in rows)
+        (row['product_id'] as int): (row['total_sold'] as num).toInt(),
+    };
+  }
+
   Future<List<Transaction>> getHistory({DateTime? startDate, DateTime? endDate}) async {
     final db = await _dbHelper.database;
     String where = '';
@@ -205,11 +322,29 @@ class TransactionRepository {
   Future<List<Map<String, dynamic>>> getTransactionDetails(int transactionId) async {
     final db = await _dbHelper.database;
     return await db.rawQuery('''
-      SELECT ti.*, p.name as product_name
+      SELECT
+        ti.id,
+        ti.transaction_id,
+        ti.product_id,
+        ti.quantity,
+        ti.price_at_sale,
+        p.name as product_name
       FROM transaction_items ti
       LEFT JOIN products p ON p.id = ti.product_id
       WHERE ti.transaction_id = ?
-    ''', [transactionId]);
+      UNION ALL
+      SELECT
+        NULL as id,
+        sa.transaction_id,
+        sa.product_id,
+        ABS(sa.quantity_change) as quantity,
+        0 as price_at_sale,
+        p.name as product_name
+      FROM stock_adjustments sa
+      LEFT JOIN products p ON p.id = sa.product_id
+      WHERE sa.transaction_id = ?
+        AND sa.reason = 'restock'
+    ''', [transactionId, transactionId]);
   }
 
   Future<List<Map<String, dynamic>>> getSevenDayTrend() async {
@@ -221,7 +356,7 @@ class TransactionRepository {
         COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ti.price_at_sale ELSE 0 END), 0) as expense
       FROM transactions t
       LEFT JOIN transaction_items ti ON ti.transaction_id = t.id
-      WHERE DATE(t.created_at) >= DATE('now', '-6 days')
+      WHERE DATE(t.created_at) >= DATE('now', 'localtime', '-6 days')
       GROUP BY DATE(t.created_at)
       ORDER BY date ASC
     ''');

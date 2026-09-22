@@ -6,6 +6,8 @@ class Product {
   final int stock;
   final int minStock;
   final String unit;
+  final bool isDeleted;
+  final DateTime? deletedAt;
   final DateTime? lastNotifiedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -18,6 +20,8 @@ class Product {
     this.stock = 0,
     this.minStock = 5,
     this.unit = 'pcs',
+    this.isDeleted = false,
+    this.deletedAt,
     this.lastNotifiedAt,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -33,6 +37,10 @@ class Product {
       stock: map['stock'] as int,
       minStock: map['min_stock'] as int,
       unit: map['unit'] as String,
+      isDeleted: ((map['is_deleted'] as num?)?.toInt() ?? 0) == 1,
+      deletedAt: map['deleted_at'] != null
+          ? DateTime.parse(map['deleted_at'] as String)
+          : null,
       lastNotifiedAt: map['last_notified_at'] != null
           ? DateTime.parse(map['last_notified_at'] as String)
           : null,
@@ -50,6 +58,8 @@ class Product {
       'stock': stock,
       'min_stock': minStock,
       'unit': unit,
+      'is_deleted': isDeleted ? 1 : 0,
+      'deleted_at': deletedAt?.toIso8601String(),
       'last_notified_at': lastNotifiedAt?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -70,6 +80,8 @@ class Product {
     int? stock,
     int? minStock,
     String? unit,
+    bool? isDeleted,
+    DateTime? deletedAt,
     DateTime? lastNotifiedAt,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -82,6 +94,8 @@ class Product {
       stock: stock ?? this.stock,
       minStock: minStock ?? this.minStock,
       unit: unit ?? this.unit,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedAt: deletedAt ?? this.deletedAt,
       lastNotifiedAt: lastNotifiedAt ?? this.lastNotifiedAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
